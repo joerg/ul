@@ -15,12 +15,12 @@ require 'config/connect'
 options = OpenStruct.new
 options.name = false
 options.gid = 100 # -g, --gid
-options.uid = -1 # -u, --uid
+options.uid = 1000 # -u, --uid
 options.groups = [] # -G, --groups
 options.home = false # -d, --home
 options.shell = "/bin/bash" # -s, --shell
-options.first = false # -f, --first
-options.last = false # -l, --last
+options.first = "" # -f, --first
+options.last = "" # -l, --last
 
 ##
 # OptionParser Object
@@ -69,51 +69,54 @@ opts = OptionParser.new do |opts|
   opts.separator ""
   opts.separator "Common options:"
 
-  # No argument, shows at tail.  This will print an options summary.
-  # Try it and see!
   opts.on_tail("-h", "--help", "Show this message") do
     puts opts
     exit
   end
 
-  # Another typical switch to print the version.
-  opts.on_tail("--version", "Show version") do
-    puts OptionParser::Version.join('.')
-    exit
-  end
 end
-
 
 opts.parse!(ARGV)
    
 options.name = ARGV[0] || raise( "Username missing." )
-#pp options
 
-##############
+##
+# Checks for name and uid
+# create default home if not given
 
 if User.exists?(options.name)
   $stderr.puts("User #{options.name} already exists.")
   exit 1
 end
 
-##
-# Uid check
 User.find(:all, :attribute => 'uidNumber').collect { |user| user.uidNumber>options.uid ? options.uid=user.uidNumber : false }
-
 options.uid+=1
+
+if !options.home
+  options.home = "/home/#{options.name}"
+end
 
 ##
 # Create user
 
-#user = User.new(name)
-#user.add_class('shadowAccount')
-#user.cn = cn
-#user.uid_number = uid
-#user.gid_number = uid
-#user.home_directory = "/home/#{name}"
-#user.sn = "somesn"
-#unless user.save
-#  puts "failed"
-#  puts user.errors.full_messages
-#  exit 1
-#end
+def mod_user(user, attributes)
+  user.login_shell = attributes.shell
+  user.cn = attributes.first + " " + attributes.last
+  user.uid_number = attributes.uid
+  user.gid_number = attributes.gid
+  user.home_directory = attributes.home
+  user.sn = attributes.last
+  user.given_name = attributes.first
+
+  return user
+
+end
+
+user = User.new(options.name)
+mod_user(user,options)
+
+unless user.save
+  puts "User creation failed"
+  puts user.errors.full_messages
+  exit 1
+end

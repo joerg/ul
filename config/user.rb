@@ -2,7 +2,7 @@ require 'config/group'
 
 class User < ActiveLdap::Base
   ldap_mapping :dn_attribute => 'uid', :prefix => 'ou=people',
-               :classes => ['person', 'posixAccount']
+               :classes => ['inetOrgPerson', 'posixAccount']
   belongs_to :primary_group, :class_name => "groups",
              :foreign_key => "gidNumber", :primary_key => "gidNumber"
   belongs_to :groups, :many => 'memberUid'
