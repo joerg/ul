@@ -14,13 +14,15 @@ require 'config/connect'
 
 options = OpenStruct.new
 options.name = false
-options.gid = 100 # -g, --gid
-options.uid = 1000 # -u, --uid
-options.groups = [] # -G, --groups
+options.gid = false # -g, --gid
+options.uid = false # -u, --uid
+options.groups = false # -G, --groups
 options.home = false # -d, --home
-options.shell = "/bin/bash" # -s, --shell
-options.first = "" # -f, --first
-options.last = "" # -l, --last
+options.shell = false # -s, --shell
+options.first = false # -f, --first
+options.last = false # -l, --last
+options.cn = false # automatically created
+options.mod = false # -m, --modify
 
 ##
 # OptionParser Object
@@ -66,6 +68,11 @@ opts = OptionParser.new do |opts|
     options.last = last
   end
 
+  opts.on("-m", "--modify",
+          "Modify existing user") do |mod|
+    options.mod = true
+  end
+
   opts.separator ""
   opts.separator "Common options:"
 
@@ -84,24 +91,55 @@ options.name = ARGV[0] || raise( "Username missing." )
 # Checks for name and uid
 # create default home if not given
 
-if User.exists?(options.name)
-  $stderr.puts("User #{options.name} already exists.")
-  exit 1
-end
+if options.mod
 
-User.find(:all, :attribute => 'uidNumber').collect { |user| user.uidNumber>options.uid ? options.uid=user.uidNumber : false }
-options.uid+=1
+  if !User.exists?(options.name)
+    $stderr.puts("User #{options.name} does not exist.")
+    exit 1
+  end
+  
+  user = User.find(options.name)
 
-if !options.home
-  options.home = "/home/#{options.name}"
+else
+  
+  if User.exists?(options.name)
+    $stderr.puts("User #{options.name} already exists.")
+    exit 1
+  end
+
+  options.gid = 100 unless options.gid
+  
+  if !options.uid
+    options.uid = 999
+    User.find(:all, :attribute => 'uidNumber').collect { |user| user.uidNumber>options.uid ? options.uid=user.uidNumber : false }
+    options.uid+=1
+  end
+
+  options.home = "/home/#{options.name}" unless options.home
+  options.shell = "/bin/bash" unless options.shell
+  
+  if options.first && options.last
+    options.cn = options.first + " " + options.last
+  elsif options.first && !options.last
+    options.cn = options.first
+  elsif !options.first && options.last
+    options.cn = options.last
+  else
+    options.cn = false
+  end
+
+  user = User.new(options.name)
+
 end
 
 ##
 # Create user
 
 def mod_user(user, attributes)
+# user hash or something instead of ostruct to support each here.
+#  attributes.each {|key, val| puts "test" }
+  user.cn = attributes.cn
   user.login_shell = attributes.shell
-  user.cn = attributes.first + " " + attributes.last
   user.uid_number = attributes.uid
   user.gid_number = attributes.gid
   user.home_directory = attributes.home
@@ -112,11 +150,12 @@ def mod_user(user, attributes)
 
 end
 
-user = User.new(options.name)
 mod_user(user,options)
 
-unless user.save
-  puts "User creation failed"
-  puts user.errors.full_messages
-  exit 1
-end
+puts user.to_ldif
+
+#unless user.save
+#  puts "User creation failed"
+#  puts user.errors.full_messages
+#  exit 1
+#end
