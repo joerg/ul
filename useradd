@@ -3,78 +3,78 @@
 
 require 'active_ldap'
 require 'optparse'
-require 'ostruct'
 
 require 'config/user'
 require 'config/group'
 require 'config/connect'
 
 ##
-# Options
+# Attr
 
-options = OpenStruct.new
-options.name = false
-options.gid = false # -g, --gid
-options.uid = false # -u, --uid
-options.groups = false # -G, --groups
-options.home = false # -d, --home
-options.shell = false # -s, --shell
-options.first = false # -f, --first
-options.last = false # -l, --last
-options.cn = false # automatically created
-options.mod = false # -m, --modify
+attr = Hash.new
+attr["uid"] = false
+attr["gid_number"] = false # -g, --gid
+attr["uid_number"] = false # -u, --uid
+attr["groups"] = false # -G, --groups
+attr["home_directory"] = false # -d, --home
+attr["login_shell"] = false # -s, --shell
+attr["given_name"] = false # -f, --first
+attr["sn"] = false # -l, --last
+attr["cn"] = false # automatically created
+
+modify = false # -m, --modify
 
 ##
 # OptionParser Object
 
 opts = OptionParser.new do |opts|
-  opts.banner = "Usage: useradd.rb [options] username"
+  opts.banner = "Usage: useradd.rb [attr] username"
 
   opts.separator ""
-  opts.separator "Specific options:"
+  opts.separator "Specific attr:"
 
   opts.on("-g", "--gid GID",
           "GID Number, defaults to 100") do |gid|
-    options.gid = gid
+    attr["gid_number"] = gid
   end
 
   opts.on("-u", "--uid UID",
           "UID Number, defaults to highest existing uid+1") do |uid|
-    options.uid = uid
+    attr["uid_number"] = uid
   end
 
   opts.on("-G", "--groups GROUP1,GROUP2,...",
           "Add user to GROUP1, GROUP2, ...") do |groups|
-    options.groups = groups.split(',')
+    attr["groups"] = groups.split(',')
   end
 
   opts.on("-d", "--home HOME",
           "Set home folder, defaults to /home/NAME") do |home|
-    options.home = home
+    attr["home_directory"] = home
   end
 
   opts.on("-s", "--shell SHELL",
           "Set shell of user, defaults to /bin/bash") do |shell|
-    options.shell = shell
+    attr["login_shell"] = shell
   end
 
   opts.on("-f", "--first FIRST",
           "Set first name") do |first|
-    options.first = first
+    attr["given_name"] = first
   end
 
   opts.on("-l", "--last SURNAME",
           "Set surname") do |last|
-    options.last = last
+    attr["sn"] = last
   end
 
   opts.on("-m", "--modify",
           "Modify existing user") do |mod|
-    options.mod = true
+    modify = true
   end
 
   opts.separator ""
-  opts.separator "Common options:"
+  opts.separator "Common attr:"
 
   opts.on_tail("-h", "--help", "Show this message") do
     puts opts
@@ -85,50 +85,57 @@ end
 
 opts.parse!(ARGV)
    
-options.name = ARGV[0] || raise( "Username missing." )
+attr["uid"] = ARGV[0] || raise( "Username missing." )
 
 ##
 # Checks for name and uid
 # create default home if not given
 
-if options.mod
+if modify
 
-  if !User.exists?(options.name)
-    $stderr.puts("User #{options.name} does not exist.")
+  if !User.exists?(attr["uid"])
+    $stderr.puts("User #{attr['uid']} does not exist.")
     exit 1
   end
+
+  tmp = Array.new
+  attr["groups"].each { |grp| tmp <<  Group.find(grp) }
+  attr["groups"] = tmp
   
-  user = User.find(options.name)
+  user = User.find(attr["uid"])
 
 else
-  
-  if User.exists?(options.name)
-    $stderr.puts("User #{options.name} already exists.")
+  ##
+  # Default values following here
+
+  if User.exists?(attr["uid"])
+    $stderr.puts("User #{attr['uid']} already exists.")
     exit 1
   end
 
-  options.gid = 100 unless options.gid
+  attr["gid_number"] = 100 unless attr["gid_number"]
   
-  if !options.uid
-    options.uid = 999
-    User.find(:all, :attribute => 'uidNumber').collect { |user| user.uidNumber>options.uid ? options.uid=user.uidNumber : false }
-    options.uid+=1
+  if !attr["uid_number"]
+    attr["uid_number"] = 999
+    User.find(:all, :attribute => 'uidNumber').collect { |user| user.uid_Number>attr["uid_number"] ? attr["uid_number"]=user.uid_Number : false }
+    attr["uid_number"]+=1
   end
 
-  options.home = "/home/#{options.name}" unless options.home
-  options.shell = "/bin/bash" unless options.shell
+  attr["home_directory"] = "/home/#{attr['uid']}" unless attr["home_directory"]
+  attr["login_shell"] = "/bin/bash" unless attr["login_shell"]
   
-  if options.first && options.last
-    options.cn = options.first + " " + options.last
-  elsif options.first && !options.last
-    options.cn = options.first
-  elsif !options.first && options.last
-    options.cn = options.last
+  # Very unRubyish. Make this a lot prettyer for release!
+  if attr["given_name"] && attr["sn"]
+    attr["cn"] = attr["given_name"] + " " + attr["sn"]
+  elsif attr["given_name"] && !attr["sn"]
+    attr["cn"] = attr["given_name"]
+  elsif !attr["given_name"] && attr["sn"]
+    attr["cn"] = attr["sn"]
   else
-    options.cn = false
+    attr["cn"] = false
   end
 
-  user = User.new(options.name)
+  user = User.new(attr["uid"])
 
 end
 
@@ -136,23 +143,17 @@ end
 # Create user
 
 def mod_user(user, attributes)
-# user hash or something instead of ostruct to support each here.
-#  attributes.each {|key, val| puts "test" }
-  user.cn = attributes.cn
-  user.login_shell = attributes.shell
-  user.uid_number = attributes.uid
-  user.gid_number = attributes.gid
-  user.home_directory = attributes.home
-  user.sn = attributes.last
-  user.given_name = attributes.first
+  # This self.instance_variable is generally not recommendet.
+  # If you know a better way to do this, please tell me.
+  attributes.each {|key, val| self.instance_variable_set(:@key, val) }
 
   return user
 
 end
 
-mod_user(user,options)
+mod_user(user,attr)
 
-puts user.to_ldif
+#puts user.to_ldif
 
 #unless user.save
 #  puts "User creation failed"
