@@ -93,14 +93,13 @@ attr["uid"] = ARGV[0] || raise( "Username missing." )
 
 if modify
 
-  if !User.exists?(attr["uid"])
-    $stderr.puts("User #{attr['uid']} does not exist.")
-    exit 1
-  end
+  User.exists?(attr["uid"]) || raise("User #{attr['uid']} does not exist.")
 
-  tmp = Array.new
-  attr["groups"].each { |grp| tmp <<  Group.find(grp) }
-  attr["groups"] = tmp
+  if attr["groups"]
+    tmp = Array.new
+    attr["groups"].each { |grp| tm << Group.find(grp) }
+    attr["groups"] = tmp
+  end
   
   user = User.find(attr["uid"])
 
