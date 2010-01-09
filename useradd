@@ -12,15 +12,15 @@ require 'config/connect'
 # Attr
 
 attr = Hash.new
-attr["uid"] = false
-attr["gid_number"] = false # -g, --gid
-attr["uid_number"] = false # -u, --uid
-attr["groups"] = false # -G, --groups
-attr["home_directory"] = false # -d, --home
-attr["login_shell"] = false # -s, --shell
-attr["given_name"] = false # -f, --first
-attr["sn"] = false # -l, --last
-attr["cn"] = false # automatically created
+#attr["uid"] = false
+#attr["gid_number"] = false # -g, --gid
+#attr["uid_number"] = false # -u, --uid
+#attr["groups"] = false # -G, --groups
+#attr["home_directory"] = false # -d, --home
+#attr["login_shell"] = false # -s, --shell
+#attr["given_name"] = false # -f, --first
+#attr["sn"] = false # -l, --last
+#attr["cn"] = false # automatically created
 
 modify = false # -m, --modify
 
@@ -94,13 +94,6 @@ attr["uid"] = ARGV[0] || raise( "Username missing." )
 if modify
 
   User.exists?(attr["uid"]) || raise("User #{attr['uid']} does not exist.")
-
-  if attr["groups"]
-    tmp = Array.new
-    attr["groups"].each { |grp| tm << Group.find(grp) }
-    attr["groups"] = tmp
-  end
-  
   user = User.find(attr["uid"])
 
 else
@@ -113,7 +106,8 @@ else
   end
 
   attr["gid_number"] = 100 unless attr["gid_number"]
-  
+
+  # Get highest existing uid + 1, start at 999 (+1)
   if !attr["uid_number"]
     attr["uid_number"] = 999
     User.find(:all, :attribute => 'uidNumber').collect { |user| user.uid_Number>attr["uid_number"] ? attr["uid_number"]=user.uid_Number : false }
@@ -122,29 +116,43 @@ else
 
   attr["home_directory"] = "/home/#{attr['uid']}" unless attr["home_directory"]
   attr["login_shell"] = "/bin/bash" unless attr["login_shell"]
-  
-  # Very unRubyish. Make this a lot prettyer for release!
-  if attr["given_name"] && attr["sn"]
-    attr["cn"] = attr["given_name"] + " " + attr["sn"]
-  elsif attr["given_name"] && !attr["sn"]
-    attr["cn"] = attr["given_name"]
-  elsif !attr["given_name"] && attr["sn"]
-    attr["cn"] = attr["sn"]
-  else
-    attr["cn"] = false
-  end
 
   user = User.new(attr["uid"])
 
 end
 
 ##
+# Things that are always needed
+
+# Add failure notice here if group can not be found
+if attr["groups"]
+  tmp = Array.new
+  attr["groups"].each { |grp| tmp << Group.find(grp) }
+  attr["groups"] = tmp
+end
+
+# Very unRubyish. Make this a lot prettyer for release!
+if attr["given_name"] || attr["sn"]
+  attr["given_name"] = user.given_name unless attr["given_name"]
+  attr["sn"] = user.sn unless attr["sn"]
+  ( attr["given_name"] && attr["sn"] ) ? delimiter = " " : delimiter = ""
+
+  attr["cn"] = attr["given_name"] + delimiter + attr["sn"]
+end
+
+##
 # Create user
 
 def mod_user(user, attributes)
-  # This self.instance_variable is generally not recommendet.
-  # If you know a better way to do this, please tell me.
-  attributes.each {|key, val| self.instance_variable_set(:@key, val) }
+
+  # I am sure this could be done better!
+  attributes.each do |key, val|
+      if key != "groups"
+        user[key] = val
+      else
+        user.groups = val
+      end
+  end
 
   return user
 
@@ -154,8 +162,8 @@ mod_user(user,attr)
 
 #puts user.to_ldif
 
-#unless user.save
-#  puts "User creation failed"
-#  puts user.errors.full_messages
-#  exit 1
-#end
+unless user.save
+  puts "User creation failed"
+  puts user.errors.full_messages
+  exit 1
+end
