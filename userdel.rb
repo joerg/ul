@@ -1,5 +1,4 @@
 #!/usr/bin/ruby
-# -*- coding: utf-8 -*-
 
 require 'active_ldap'
 require 'optparse'
@@ -12,7 +11,7 @@ require 'config/connect'
 # OptionParser Object
 
 opts = OptionParser.new do |opts|
-  opts.banner = "Usage: userdel.rb username"
+opts.banner = "Usage: userdel.rb username"
 
   opts.separator ""
   opts.separator "Common attr:"
